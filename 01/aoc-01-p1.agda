@@ -70,6 +70,8 @@ count = count-aux 0
 test3 : (count ∘ analyze ∘ observe) ex1 ≡ 1
 test3 = refl
 
+-- IO
+
 open import Level
 open import IO
 open import Data.String using (String; _++_; lines)
@@ -89,7 +91,7 @@ showCount nothing = putStrLn "error"
 
 main : Main
 main = run do
-  content ← readFiniteFile "input"
+  content ← readFiniteFile "input-p1"
   let ls = lines content
   let parsed = traverse $ mapₗ (readMaybe 10) ls -- Maybe (List ℕ)
   let count = mapₘ (count ∘ analyze ∘ observe) parsed
