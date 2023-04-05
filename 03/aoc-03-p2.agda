@@ -3,13 +3,13 @@
 
 module aoc-03-p2 where
 
-open import Data.Bool hiding (_≤?_ ; _≤_)
+open import Data.Bool hiding (_≤?_ ; _≤_ ; _<_)
 open import Data.Product hiding (swap)
 open import Function
-open import Data.Fin hiding (_≤_ ; Ordering ; compare)
+open import Data.Fin hiding (_≤_ ; Ordering ; compare ; _<_)
 open import Data.Nat
 open import Data.Nat.Show
-open import Data.String hiding (show ; _≤_)
+open import Data.String hiding (show ; _≤_ ; _<_)
 open import Data.Maybe hiding (zip) renaming (map to mapₘ)
 open import Data.List hiding (zip ; lookup) renaming (map to mapₗ ; length to lengthₗ)
 open import Relation.Nullary
@@ -48,7 +48,10 @@ module Model (L : ℕ) where
   c-anti-add c w = w-add {L} c (v-map not w)
 
   Position : Set
-  Position = Fin L
+  Position = Σ[ n ∈ ℕ ] n Data.Nat.< L
+
+  toFin : Position → Fin L
+  toFin (n , p) = fromℕ< p
 
   Sequence : Set
   Sequence = List Word
@@ -66,75 +69,75 @@ module Model (L : ℕ) where
   countBoth : Sequence → Count × Count
   countBoth s = (countZeroes s) , (countOnes s)
 
-  module Parser where
+module Parser (L : ℕ) where
+  open Model L
 
-    chars : String → List String
-    chars str = mapₗ fromChar $ toList str
+  chars : String → List String
+  chars str = mapₗ fromChar $ toList str
 
-    even♭ : ℕ → Bit
-    even♭ zero = 0♭
-    even♭ (suc zero) = 1♭
-    even♭ (suc (suc n)) = even♭ n
+  even♭ : ℕ → Bit
+  even♭ zero = 0♭
+  even♭ (suc zero) = 1♭
+  even♭ (suc (suc n)) = even♭ n
 
-    bits : List String → Maybe (List Bit)
-    bits [] = just []
-    bits (x ∷ l) = do
-            h ← readMaybe 10 x
-            t ← bits l
-            just $ even♭ h ∷ t
+  bits : List String → Maybe (List Bit)
+  bits [] = just []
+  bits (x ∷ l) = do
+          h ← readMaybe 10 x
+          t ← bits l
+          just $ even♭ h ∷ t
 
-    take-to-vec : (n : ℕ) → List Bit → Maybe (Vec Bit n)
-    take-to-vec zero l = just []
-    take-to-vec (suc n) [] = nothing
-    take-to-vec (suc n) (x ∷ l) = take-to-vec n l >>= λ t → just (x ∷ t)
+  take-to-vec : (n : ℕ) → List Bit → Maybe (Vec Bit n)
+  take-to-vec zero l = just []
+  take-to-vec (suc n) [] = nothing
+  take-to-vec (suc n) (x ∷ l) = take-to-vec n l >>= λ t → just (x ∷ t)
 
-    mkWord : List Bit → Maybe Word
-    mkWord l = take-to-vec L l
+  mkWord : List Bit → Maybe Word
+  mkWord l = take-to-vec L l
 
-    parse : String → Maybe Word
-    parse str = (str |> chars |> bits) >>= mkWord
+  parseWord : String → Maybe Word
+  parseWord str = (str |> chars |> bits) >>= mkWord
 
-    traverse : List (Maybe Word) → Maybe (List Word)
-    traverse [] = just []
-    traverse (x ∷ l) = x >>= λ h → traverse l >>= λ t → just (h ∷ t)
+  traverse : List (Maybe Word) → Maybe Sequence
+  traverse [] = just []
+  traverse (x ∷ l) = x >>= λ h → traverse l >>= λ t → just (h ∷ t)
 
-  Cmp : Set
-  Cmp = Σ[ m ∈ ℕ ] Σ[ n ∈ ℕ ] Ordering m n
+  parse : List String → Maybe Sequence
+  parse l = l |> mapₗ parseWord |> traverse
 
-  cmp : ∀ {l} → (Vec ℕ l) × (Vec ℕ l) → Vec Cmp l
-  cmp {zero} ([] , []) = []
-  cmp {suc l} (x₀ ∷ c₀ , x₁ ∷ c₁) = (x₀ , x₁ , compare x₀ x₁) ∷ cmp (c₀ , c₁)
+ex1 : List String
+ex1 = "010101"
+    ∷ "111000"
+    ∷ "000111"
+    ∷ "001100"
+    ∷ "101101"
+    ∷ "001110" ∷ []
+mseq1 = Parser.parse 6 ex1
 
-  Mask : Set
-  Mask = Vec Cmp L
+module Filter (L : ℕ) where
+  open Model L
 
-  makeMask : Sequence → Mask
-  makeMask = cmp ∘ countBoth
+  single-pass : Position → Bit → Sequence → Sequence
+  single-pass pos bit [] = []
+  single-pass pos bit (x ∷ s) with bit Data.Bool.≟ (lookup x (toFin pos))
+  ... | false because proof₁ = single-pass pos bit s
+  ... | true because proof₁ = x ∷ single-pass pos bit s
 
-  data Subsingleton {A : Set} : A → Set where
-    empty : ∀ {a : A} → Subsingleton a
-    singleton : (a : A) → Subsingleton a
+  suc-asc : ∀ (n : ℕ) → n ≤ suc n
+  suc-asc zero = z≤n
+  suc-asc (suc n) = s≤s (suc-asc n)
 
-  BitCriteria : Set
-  BitCriteria = Position → (w : Word) → Subsingleton w
+  lem0 : ∀ {a b c : ℕ} → a ≤ b → b ≤ c → a ≤ c
+  lem0 {zero} ab bc = z≤n 
+  lem0 {suc a} {suc b} {suc c} (s≤s ab) (s≤s bc) = s≤s (lem0 ab bc)
 
-  mkCriteria-aux : Bit → Cmp → Bit → (w : Word) → Subsingleton w
-  mkCriteria-aux tie (c₀ , .(suc (c₀ Data.Nat.+ k)) , less .c₀ k) bit w = if bit then singleton w else empty
-  mkCriteria-aux tie (c₀ , .c₀ , equal .c₀) bit w = if bit ∧ tie then singleton w else empty
-  mkCriteria-aux tie (.(suc (c₁ Data.Nat.+ k)) , c₁ , greater .c₁ k) bit w = if bit then empty else singleton w
+  lem1 : ∀ {l : ℕ} → suc l < L → l < L
+  lem1 {zero} (s≤s sl<L) = s≤s z≤n
+  lem1 {suc l} (s≤s sl<L) = s≤s (lem0 (suc-asc (suc l)) sl<L)
 
-  makeCriteria : Bit → Mask → BitCriteria
-  makeCriteria tie mask pos w = mkCriteria-aux tie (lookup mask pos) (lookup w pos) w
-
-  mostCommon : Mask → BitCriteria
-  mostCommon = makeCriteria 1♭
-
-  leastCommon : Mask → BitCriteria
-  leastCommon = makeCriteria 0♭
-
-  singlePass : Position → BitCriteria → Sequence → Sequence
-  singlePass pos criteria [] = []
-  singlePass pos criteria (w ∷ s) with criteria pos w
-  ... | empty = singlePass pos criteria s
-  ... | singleton .w = w ∷ (singlePass pos criteria s)
-
+  multi-pass : Position → Bit → Sequence → Maybe Sequence
+  multi-pass pos bit s with single-pass pos bit s
+  ... | [] = nothing
+  ... | x ∷ [] = just Data.List.[ x ]
+  multi-pass (zero , p) bit s | x ∷ x₁ ∷ s' = nothing
+  multi-pass (suc l , p) bit s | x ∷ x₁ ∷ s' = multi-pass (l , lem1 p) bit (x ∷ x₁ ∷ s')
